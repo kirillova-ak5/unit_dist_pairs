@@ -15,5 +15,15 @@ between the vertices of a convex polygon, J. Combin. Theory Ser. A 56 (1991),
 Z. F¨uredi, The maximum number of unit distances in a convex n-gon, J. Combin.
 Theory Ser. A 55 (1990), 316–320 - верхняя граница, нужно ознакомиться
 
+## Выясненное
 
+### Для нестрого выпуклого
+Достигнутая нижняя оценка - 2n-3\
+![2n-3](pics/sample2.png)
 
+### Для малых размерностей
+В 5-угольнике максимальное количество = 2n-4 = 6\
+![5gon1](pics/sample1.png)
+
+### Прочее
+[geogebra](https://www.geogebra.org) - удобная тула для моделирования многоугольников
