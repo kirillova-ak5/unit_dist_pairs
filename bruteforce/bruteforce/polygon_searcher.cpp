@@ -1,5 +1,4 @@
 #include <iostream>
-#include <vector>
 #include <stack>
 #include <algorithm>
 #include "mth.h"
@@ -19,12 +18,36 @@ static bool GetNextCombination(int n, int k, int* prevComb)
   return false;
 }
 
+// prevComb - inout
+static bool GetNextCombinationPermuted(int n, int k, int* prevComb)
+{
+  if (std::next_permutation(prevComb, prevComb + k))
+    return true;
+  for (int i = 0; i < k; i++)
+    if (prevComb[k - i - 1] < n - i - 1)
+    {
+      prevComb[k - i - 1]++;
+      for (int j = k - i; j < k; j++)
+        prevComb[j] = prevComb[j - 1] + 1;
+      return true;
+    }
+  return false;
+}
+
+
 static vec SecondTop(std::stack<vec>& stk) {
   vec tempPoint = stk.top();
   stk.pop();
   vec res = stk.top();
   stk.push(tempPoint);
   return res;
+}
+bool polygon_searcher::IsConvexFast(int nVert, int* vertices)
+{
+  for (int i = 0; i < nVert; i++)
+    if (vec::SignedArea(vertices[(i - 1 + nVert) % nVert], vertices[i], vertices[(i + 1 + nVert) % nVert]) < 0.f)
+      return false;
+  return true;
 }
 
 bool polygon_searcher::IsConvex(int nVert, int* vertIndices)
@@ -63,20 +86,32 @@ bool polygon_searcher::IsConvex(int nVert, int* vertIndices)
   return stk.size() == nVert;
 }
 
-void polygon_searcher::Process(void)
+struct diag
 {
-  int *curCombination = new int[polySize];
+  int i, j;
+  float len;
+};
+
+void polygon_searcher::Process(bool fastConvex)
+{
+  int* curCombination = new int[polySize];
   for (int i = 0; i < polySize; i++)
     curCombination[i] = i;
 
   int gridFullSize = gridSize * gridSize;
   int numDiag = (polySize * (polySize - 1)) / 2;
 
-  float* diagLenghts = new float[numDiag];
+  diag* diagLenghts = new diag[numDiag];
 
   do {
-    if (!IsConvex(polySize, curCombination))
-      continue;
+    if (fastConvex)
+    {
+      if (!IsConvexFast(polySize, curCombination))
+        continue;
+    }
+    else
+      if (!IsConvex(polySize, curCombination))
+        continue;
     std::vector<vec> vertices(polySize);
     for (int i = 0; i < polySize; i++)
       vertices[i] = vec(curCombination[i] % gridSize, curCombination[i] / gridSize);
@@ -84,9 +119,14 @@ void polygon_searcher::Process(void)
     for (int k = 0, i = 0; i < polySize - 1; i++)
       for (int j = i + 1; j < polySize; j++, k++)
       {
-        diagLenghts[k] = (vertices[i] - vertices[j]).VecLen();
+        diagLenghts[k].i = i;
+        diagLenghts[k].j = j;
+        diagLenghts[k].len = (vertices[i] - vertices[j]).VecLen();
       }
-    std::sort(diagLenghts, diagLenghts + numDiag);
+    std::sort(diagLenghts, diagLenghts + numDiag, [](const diag& d1, const diag& d2) 
+      {
+        return d1.len < d2.len;
+      });
 
     int curBegin = 0, maxBegin = 0;
     int curLen = 1, maxLen = 1;
@@ -94,7 +134,7 @@ void polygon_searcher::Process(void)
     {
       for (int j = curBegin; j < i; j++)
       {
-        if (diagLenghts[i] - diagLenghts[j] <= eps)
+        if (diagLenghts[i].len - diagLenghts[j].len <= eps)
         {
           curLen++;
           break;
@@ -111,9 +151,27 @@ void polygon_searcher::Process(void)
         }
       }
     }
-    if (maxLen > 5)
-    std::cout << maxLen << '\n';
-  } while (GetNextCombination(gridFullSize, polySize, curCombination));
+    if (maxLen >= 2 * polySize - 4)
+    {
+      search_result res;
+      res.polyVertices = new int[2 * polySize];
+      res.nDiags = maxLen;
+      res.diags = new int[2 * maxLen];
+      for (int i = 0; i < polySize; i++)
+      {
+        res.polyVertices[i * 2] = vertices[i].X;
+        res.polyVertices[i * 2 + 1] = vertices[i].Z;
+      }
+      for (int diagIdx = 0; diagIdx < maxLen; diagIdx++)
+      {
+        res.diags[diagIdx * 2] = diagLenghts[maxBegin + diagIdx].i;
+        res.diags[diagIdx * 2 + 1] = diagLenghts[maxBegin + diagIdx].j;
+      }
+      results.push_back(res);
+      if (maxLen > 6)
+        std::cout << maxLen << '\n';
+    }
+  } while (fastConvex ? GetNextCombinationPermuted(gridFullSize, polySize, curCombination) : GetNextCombination(gridFullSize, polySize, curCombination));
 
   delete[] curCombination;
   delete[] diagLenghts;
@@ -124,6 +182,38 @@ void polygon_searcher::OutResult(void)
 {
   vec arr[] = { {1, 1}, {1, 2}, {2, 1} };
   int idxs[] = { 11, 31, 33, 13 };
+  int a[] = { 0, 1, 2 };
   //std::cout << IsConvex(4, idxs);
-  Process();
+  Process(0);
+
+  FILE* f = fopen("..\\res.txt", "w");
+  if (!f)
+    return;
+  fprintf(f, "%i\n", results.size());
+  fprintf(f, "%i\n", polySize);
+  fprintf(f, "%i\n", gridSize);
+  for (auto r : results)
+  {
+    for (int i = 0; i < polySize; i++)
+    {
+      fprintf(f, "%i %i ", r.polyVertices[i * 2], r.polyVertices[i * 2 + 1]);
+    }
+    fprintf(f, "\n%i\n", r.nDiags);
+    for (int i = 0; i < r.nDiags; i++)
+    {
+      fprintf(f, "%i %i ", r.diags[i * 2], r.diags[i * 2 + 1]);
+    }
+    fprintf(f, "\n");
+  }
+  fclose(f);
 }
+
+polygon_searcher::~polygon_searcher(void)
+{
+  for (auto r : results)
+  {
+    delete[] r.diags;
+    delete[] r.polyVertices;
+  }
+}
+
