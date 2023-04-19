@@ -5,9 +5,9 @@
 
 class polygon_searcher
 {
-  int gridSize = 7;
+  int gridSize = 8;
   int polySize = 5;
-  float eps = 0.6;
+  float eps = 0.2;
 
   struct search_result
   {

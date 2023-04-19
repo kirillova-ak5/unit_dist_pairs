@@ -1,6 +1,7 @@
 #include <iostream>
 #include <stack>
 #include <algorithm>
+#include <chrono>
 #include "mth.h"
 #include "polygon_searcher.h"
 
@@ -35,17 +36,23 @@ static bool GetNextCombinationPermuted(int n, int k, int* prevComb)
 }
 
 
-static vec SecondTop(std::stack<vec>& stk) {
+static vec SecondTop(std::stack<vec>& stk)
+{
   vec tempPoint = stk.top();
   stk.pop();
   vec res = stk.top();
   stk.push(tempPoint);
   return res;
 }
-bool polygon_searcher::IsConvexFast(int nVert, int* vertices)
+
+bool polygon_searcher::IsConvexFast(int nVert, int* vertIndices)
 {
+  std::vector<vec> vertices(nVert);
   for (int i = 0; i < nVert; i++)
-    if (vec::SignedArea(vertices[(i - 1 + nVert) % nVert], vertices[i], vertices[(i + 1 + nVert) % nVert]) < 0.f)
+    vertices[i] = vec(vertIndices[i] % gridSize, vertIndices[i] / gridSize);
+
+  for (int i = -1; i < nVert; i++)
+    if (vec::SignedArea(vertices[(i - 1 + nVert) % nVert], vertices[(i + nVert) % nVert], vertices[(i + 1 + nVert) % nVert]) <= 0.f)
       return false;
   return true;
 }
@@ -169,7 +176,7 @@ void polygon_searcher::Process(bool fastConvex)
       }
       results.push_back(res);
       if (maxLen > 6)
-        std::cout << maxLen << '\n';
+        ;// std::cout << maxLen << '\n';
     }
   } while (fastConvex ? GetNextCombinationPermuted(gridFullSize, polySize, curCombination) : GetNextCombination(gridFullSize, polySize, curCombination));
 
@@ -183,8 +190,18 @@ void polygon_searcher::OutResult(void)
   vec arr[] = { {1, 1}, {1, 2}, {2, 1} };
   int idxs[] = { 11, 31, 33, 13 };
   int a[] = { 0, 1, 2 };
-  //std::cout << IsConvex(4, idxs);
+  //while (GetNextCombinationPermuted(4, 3, a))
+   // std::cout << a[0]<<a[1]<<a[2]<<'\n';
+  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
   Process(0);
+  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+  Process(1);
+  std::chrono::high_resolution_clock::time_point t3 = std::chrono::high_resolution_clock::now();
+
+  std::chrono::duration<double, std::milli> time_span0 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
+  std::chrono::duration<double, std::milli> time_span1 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2);
+
+  std::cout << time_span0.count() << ' ' << time_span1.count();
 
   FILE* f = fopen("..\\res.txt", "w");
   if (!f)
