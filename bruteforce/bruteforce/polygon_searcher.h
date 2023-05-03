@@ -5,17 +5,20 @@
 
 class polygon_searcher
 {
-  int gridSize = 8;
-  int polySize = 5;
-  float eps = 0.2;
+  int gridSize = 10;
+  int polySize = 7;
+  float eps = 0.6;
 
   struct search_result
   {
     int *polyVertices;
     int nDiags;
     int *diags;
+    std::vector<int*> masks;
   };
   std::vector<search_result> results;
+  int * GeneratePrimaryMask(search_result& res);
+  void GenerateMasksFromDiags(search_result &res);
 public:
   void OutResult(void);
   bool IsConvex(int nVert, int *vertices);

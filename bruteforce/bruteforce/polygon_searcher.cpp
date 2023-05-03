@@ -90,7 +90,15 @@ bool polygon_searcher::IsConvex(int nVert, int* vertIndices)
     stk.push(vertices[i]);
   }
 
-  return stk.size() == nVert;
+  if (stk.size() != nVert)
+    return false;
+  for (int i = 0; i < nVert; i++)
+  {
+    vec v = stk.top();
+    stk.pop();
+    vertIndices[i] = v.X + v.Z * gridSize;
+  }
+  return true;
 }
 
 struct diag
@@ -99,9 +107,44 @@ struct diag
   float len;
 };
 
+int* polygon_searcher::GeneratePrimaryMask(search_result& res)
+{
+  int* mask = new int[polySize];
+  memset(mask, 0, sizeof(int) * polySize);
+  for (int i = 0; i < res.nDiags; i++)
+  {
+    mask[res.diags[i * 2]] += 1 << res.diags[i * 2 + 1];
+    mask[res.diags[i * 2 + 1]] += 1 << res.diags[i * 2];
+  }
+  return mask;
+}
+
+void polygon_searcher::GenerateMasksFromDiags(search_result& res)
+{
+  res.masks.resize(polySize * 2);
+  for (int numeration = 0; numeration < polySize; numeration++)
+  {
+    int* maskFwd = new int[polySize];
+    int* maskInv = new int[polySize];
+    memset(maskFwd, 0, sizeof(int) * polySize);
+    memset(maskInv, 0, sizeof(int) * polySize);
+    for (int i = 0; i < res.nDiags; i++)
+    {
+      maskFwd[(res.diags[i * 2] + numeration) % polySize] += 1 << ((res.diags[i * 2 + 1] + numeration) % polySize);
+      maskFwd[(res.diags[i * 2 + 1] + numeration) % polySize] += 1 << ((res.diags[i * 2] + numeration) % polySize);
+      maskInv[(polySize - res.diags[i * 2] - 1 + numeration) % polySize] += 1 << ((polySize - res.diags[i * 2 + 1] - 1+ numeration) % polySize);
+      maskInv[(polySize - res.diags[i * 2 + 1] - 1 + numeration) % polySize] += 1 << ((polySize - res.diags[i * 2] - 1 + numeration) % polySize);
+    }
+    res.masks[numeration] = maskFwd;
+    res.masks[polySize + numeration] = maskInv;
+  }
+}
+
+
 void polygon_searcher::Process(bool fastConvex)
 {
   int* curCombination = new int[polySize];
+  int* curCombinationCopy = new int[polySize];
   for (int i = 0; i < polySize; i++)
     curCombination[i] = i;
 
@@ -111,17 +154,18 @@ void polygon_searcher::Process(bool fastConvex)
   diag* diagLenghts = new diag[numDiag];
 
   do {
+    memcpy(curCombinationCopy, curCombination, sizeof(int) * polySize);
     if (fastConvex)
     {
       if (!IsConvexFast(polySize, curCombination))
         continue;
     }
     else
-      if (!IsConvex(polySize, curCombination))
+      if (!IsConvex(polySize, curCombinationCopy))
         continue;
     std::vector<vec> vertices(polySize);
     for (int i = 0; i < polySize; i++)
-      vertices[i] = vec(curCombination[i] % gridSize, curCombination[i] / gridSize);
+      vertices[i] = vec(curCombinationCopy[i] % gridSize, curCombinationCopy[i] / gridSize);
 
     for (int k = 0, i = 0; i < polySize - 1; i++)
       for (int j = i + 1; j < polySize; j++, k++)
@@ -158,6 +202,7 @@ void polygon_searcher::Process(bool fastConvex)
         }
       }
     }
+    // filter interesting ones
     if (maxLen >= 2 * polySize - 4)
     {
       search_result res;
@@ -174,7 +219,27 @@ void polygon_searcher::Process(bool fastConvex)
         res.diags[diagIdx * 2] = diagLenghts[maxBegin + diagIdx].i;
         res.diags[diagIdx * 2 + 1] = diagLenghts[maxBegin + diagIdx].j;
       }
-      results.push_back(res);
+      int* curMask = GeneratePrimaryMask(res);
+      bool accept = true;
+      if (results.size() == 5)
+        std::cout << "";
+      for (auto r : results)
+      {
+        if (!accept)
+          break;
+        for (auto mask : r.masks)
+          if (!memcmp(curMask, mask, sizeof(int) * polySize))
+          {
+            accept = false;
+            break;
+          }
+      }
+      delete[] curMask;
+      if (accept)
+      {
+        GenerateMasksFromDiags(res);
+        results.push_back(res);
+      }
       if (maxLen > 6)
         ;// std::cout << maxLen << '\n';
     }
@@ -195,7 +260,7 @@ void polygon_searcher::OutResult(void)
   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
   Process(0);
   std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-  Process(1);
+ // Process(1);
   std::chrono::high_resolution_clock::time_point t3 = std::chrono::high_resolution_clock::now();
 
   std::chrono::duration<double, std::milli> time_span0 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1);
@@ -231,6 +296,8 @@ polygon_searcher::~polygon_searcher(void)
   {
     delete[] r.diags;
     delete[] r.polyVertices;
+    for (auto m : r.masks)
+      delete[] m;
   }
 }
 
