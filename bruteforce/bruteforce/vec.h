@@ -114,6 +114,7 @@ public:
   }
 
   /* Double area actually */
+  /* >0 if p3 lefter p1p2 */
   static Type SignedArea(vec2 p1, vec2 p2, vec2 p3)
   {
     return

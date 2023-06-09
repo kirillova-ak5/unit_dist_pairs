@@ -36,12 +36,12 @@ static bool GetNextCombinationPermuted(int n, int k, int* prevComb)
 }
 
 
-static vec SecondTop(std::stack<vec>& stk)
+static vec SecondTop(std::vector<vec>& stk)
 {
-  vec tempPoint = stk.top();
-  stk.pop();
-  vec res = stk.top();
-  stk.push(tempPoint);
+  vec tempPoint = stk.back();
+  stk.pop_back();
+  vec res = stk.back();
+  stk.push_back(tempPoint);
   return res;
 }
 
@@ -59,7 +59,7 @@ bool polygon_searcher::IsConvexFast(int nVert, int* vertIndices)
 
 bool polygon_searcher::IsConvex(int nVert, int* vertIndices)
 {
-  std::vector<vec> vertices(nVert);
+  static std::vector<vec> vertices(nVert);
   for (int i = 0; i < nVert; i++)
     vertices[i] = vec(vertIndices[i] % gridSize, vertIndices[i] / gridSize);
  
@@ -82,24 +82,68 @@ bool polygon_searcher::IsConvex(int nVert, int* vertIndices)
   if (newSize < nVert)
     return false;
 
-  std::stack<vec> stk;
-  stk.push(vertices[0]); stk.push(vertices[1]); stk.push(vertices[2]);
+  static std::vector<vec> stk;
+  stk.clear();
+  stk.reserve(polySize);
+  stk.push_back(vertices[0]); stk.push_back(vertices[1]); stk.push_back(vertices[2]);
   for (int i = 3; i < nVert; i++) {
-    while (vec::AngleCmp(SecondTop(stk), stk.top(), vertices[i]) != -1)
-      stk.pop();
-    stk.push(vertices[i]);
+    while (vec::AngleCmp(SecondTop(stk), stk.back(), vertices[i]) != -1)
+      stk.pop_back();
+    stk.push_back(vertices[i]);
   }
 
   if (stk.size() != nVert)
     return false;
   for (int i = 0; i < nVert; i++)
   {
-    vec v = stk.top();
-    stk.pop();
+    vec v = stk.back();
+    stk.pop_back();
     vertIndices[i] = v.X + v.Z * gridSize;
   }
   return true;
 }
+
+bool polygon_searcher::IsConvex1(int nVert, int* vertIndices)
+{
+  static std::vector<vec> vertices(nVert);
+  for (int i = 0; i < nVert; i++)
+    vertices[i] = vec(vertIndices[i] % gridSize, vertIndices[i] / gridSize);
+
+  if (vec::SignedArea(vertices[0], vertices[1], vertices[2]) == 0)
+    return false;
+  if (vec::SignedArea(vertices[0], vertices[1], vertices[2]) < 0)
+    std::swap(vertices[1], vertices[2]);
+
+  for (int curChecked = 3; curChecked < nVert; curChecked++)
+  {
+    int countRight = 0;
+    int lastRight = -1;
+    for (int i = 0; i < curChecked; i++)
+    {
+      float area = vec::SignedArea(vertices[i], vertices[(i + 1) % curChecked], vertices[curChecked]);
+      if (area == 0)
+        return false;
+      if (area < 0)
+      {
+        countRight++;
+        lastRight = (i + 1) % curChecked;
+        if (countRight > 1)
+          return false;
+      }
+    }
+    if (countRight != 1)
+      return false;
+    vec v = vertices[curChecked];
+    vertices.erase(vertices.begin() + curChecked);
+    vertices.insert(vertices.begin() + lastRight, v);
+  }
+  for (int i = 0; i < nVert; i++)
+  {
+    vertIndices[i] = vertices[i].X + vertices[i].Z * gridSize;
+  }
+  return true;
+}
+
 
 struct diag
 {
@@ -161,7 +205,7 @@ void polygon_searcher::Process(bool fastConvex)
         continue;
     }
     else
-      if (!IsConvex(polySize, curCombinationCopy))
+      if (!IsConvex1(polySize, curCombinationCopy))
         continue;
     std::vector<vec> vertices(polySize);
     for (int i = 0; i < polySize; i++)
@@ -219,6 +263,65 @@ void polygon_searcher::Process(bool fastConvex)
         res.diags[diagIdx * 2] = diagLenghts[maxBegin + diagIdx].i;
         res.diags[diagIdx * 2 + 1] = diagLenghts[maxBegin + diagIdx].j;
       }
+      // filter false positive
+
+      // sandglass
+      int checkVert1[] = { 0, 1, 2, 3 };
+      bool falsePos = false;
+      do
+      {
+        bool d[4] = { 0 };
+        for (int pair = 0; pair < maxLen; pair++)
+        {
+          d[0] = d[0] || (res.diags[pair * 2] == checkVert1[0] && res.diags[pair * 2 + 1] == checkVert1[1]) || (res.diags[pair * 2 + 1] == checkVert1[0] && res.diags[pair * 2] == checkVert1[1]);
+          d[1] = d[1] || (res.diags[pair * 2] == checkVert1[1] && res.diags[pair * 2 + 1] == checkVert1[2]) || (res.diags[pair * 2 + 1] == checkVert1[1] && res.diags[pair * 2] == checkVert1[2]);
+          d[2] = d[2] || (res.diags[pair * 2] == checkVert1[2] && res.diags[pair * 2 + 1] == checkVert1[3]) || (res.diags[pair * 2 + 1] == checkVert1[2] && res.diags[pair * 2] == checkVert1[3]);
+          d[3] = d[3] || (res.diags[pair * 2] == checkVert1[3] && res.diags[pair * 2 + 1] == checkVert1[0]) || (res.diags[pair * 2 + 1] == checkVert1[3] && res.diags[pair * 2] == checkVert1[0]);
+        }
+        if (d[0] && d[1] && d[2] && d[3])
+        {
+          int inv = 0;
+          for (int k = 0; k < 4; k++)
+            if (checkVert1[k] > checkVert1[(k + 1) % 4])
+            {
+              inv++;
+            }
+          if (inv % 2 == 0)
+          {
+            falsePos = true;
+            break;
+          }
+        }
+      } while (GetNextCombinationPermuted(polySize, 4, checkVert1));
+      if (falsePos)
+        continue;
+
+      // 3 trangles
+      int checkVert[] = { 0, 1, 2, 3, 4 };
+      do
+      {
+        bool d[7] = { 0 };
+        for (int pair = 0; pair < maxLen; pair++)
+        {
+          d[0] = d[0] || (res.diags[pair * 2] == checkVert[0] && res.diags[pair * 2 + 1] == checkVert[1]) || (res.diags[pair * 2 + 1] == checkVert[0] && res.diags[pair * 2] == checkVert[1]);
+          d[1] = d[1] || (res.diags[pair * 2] == checkVert[0] && res.diags[pair * 2 + 1] == checkVert[2]) || (res.diags[pair * 2 + 1] == checkVert[0] && res.diags[pair * 2] == checkVert[2]);
+          d[2] = d[2] || (res.diags[pair * 2] == checkVert[0] && res.diags[pair * 2 + 1] == checkVert[3]) || (res.diags[pair * 2 + 1] == checkVert[0] && res.diags[pair * 2] == checkVert[3]);
+          d[3] = d[3] || (res.diags[pair * 2] == checkVert[0] && res.diags[pair * 2 + 1] == checkVert[4]) || (res.diags[pair * 2 + 1] == checkVert[0] && res.diags[pair * 2] == checkVert[4]);
+          d[4] = d[4] || (res.diags[pair * 2] == checkVert[1] && res.diags[pair * 2 + 1] == checkVert[2]) || (res.diags[pair * 2 + 1] == checkVert[1] && res.diags[pair * 2] == checkVert[2]);
+          d[5] = d[5] || (res.diags[pair * 2] == checkVert[2] && res.diags[pair * 2 + 1] == checkVert[3]) || (res.diags[pair * 2 + 1] == checkVert[2] && res.diags[pair * 2] == checkVert[3]);
+          d[6] = d[6] || (res.diags[pair * 2] == checkVert[3] && res.diags[pair * 2 + 1] == checkVert[4]) || (res.diags[pair * 2 + 1] == checkVert[3] && res.diags[pair * 2] == checkVert[4]);
+        }
+        if (d[0] && d[1] && d[2] && d[3] && d[4] && d[5] && d[6])
+        {
+            falsePos = true;
+            break;
+        }
+      } while (GetNextCombinationPermuted(polySize, 5, checkVert));
+      if (falsePos)
+        continue;
+
+
+      // filter same graphs
       int* curMask = GeneratePrimaryMask(res);
       bool accept = true;
       if (results.size() == 5)

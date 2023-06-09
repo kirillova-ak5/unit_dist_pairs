@@ -5,9 +5,10 @@
 
 class polygon_searcher
 {
-  int gridSize = 10;
-  int polySize = 7;
-  float eps = 0.6;
+private:
+  int gridSize = 8;
+  int polySize = 8;
+  float eps = 1.5;
 
   struct search_result
   {
@@ -22,6 +23,8 @@ class polygon_searcher
 public:
   void OutResult(void);
   bool IsConvex(int nVert, int *vertices);
+  bool IsConvex1(int nVert, int* vertices);
+  bool IsConvex2(int nVert, int* vertices);
   bool IsConvexFast(int nVert, int* vertices);
   void Process(bool fastConvex);
   ~polygon_searcher(void);
